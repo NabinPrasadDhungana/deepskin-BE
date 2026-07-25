@@ -1,0 +1,127 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+bin/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+#  Usually these files are written by a python script from a template
+#  before launching pyinstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.toml
+.cache
+.pytest_cache/
+.testmondata
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.run/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebooks checkpoints and runtime data
+.ipynb_checkpoints
+*/.ipynb_checkpoints/
+.runtime/
+
+# IPython
+.ipython/
+
+# pyenv
+#   For a library or package, you might want to share your .python-version.
+#   For an app, transparency of the venv is good.
+#.python-version
+
+# pipenv
+#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in git.
+#   However, in some cases, the lock file may contains platform-specific dependencies.
+#Pipfile.lock
+
+# poetry
+#   Poetry uses pyproject.toml to manage dependencies and lockfile to lock them.
+#   poetry.lock should generally be tracked in version control.
+#poetry.lock
+
+# pdm
+#   PDM stores project-wide configurations in .pdm.toml
+.pdm.toml
+.pdm-plugins/
+
+# venv / Virtual Environments (Crucial to exclude!)
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Environment variables and secrets
+.env
+.venv
+*.env
+
+# IDEs and editors (VS Code / PyCharm)
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
