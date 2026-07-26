@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsDoctor, IsPatient
-from mlservice.pipeline import run_inference_on_case
+from mlservice.tasks import process_case_task
 from .models import Case, CaseImage, Message
 from .permissions import IsAssignedDoctorOrUnassigned, IsCaseOwnerPatient
 from .serializers import (
@@ -59,12 +59,14 @@ class PatientCaseListCreateView(generics.ListCreateAPIView):
         for i, img in enumerate(images):
             CaseImage.objects.create(case=case, image=img, is_primary=(i == 0))
 
-        # Run the model on the primary image and populate ai_* fields.
-        # See mlservice/pipeline.py for the preprocessing + inference steps.
-        run_inference_on_case(case)
+        # Schedule async -- returns immediately, doctor queue fills in
+        # once the task finishes (ai_status: queued -> processing -> done).
+        process_case_task.delay(str(case.id))
 
-        return Response(PatientCaseDetailSerializer(case, context={'request': request}).data,
-                         status=status.HTTP_201_CREATED)
+        return Response(
+            PatientCaseDetailSerializer(case, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class PatientCaseDetailView(generics.RetrieveAPIView):
@@ -88,7 +90,11 @@ class DoctorQueueView(generics.ListAPIView):
 
     def get_queryset(self):
         return (
-            Case.objects.filter(status=Case.Status.PENDING, assigned_doctor__isnull=True)
+            Case.objects.filter(
+                status=Case.Status.PENDING,
+                assigned_doctor__isnull=True,
+                ai_status=Case.AIStatus.DONE,
+            )
             .order_by('-ai_confidence', 'created_at')
         )
 

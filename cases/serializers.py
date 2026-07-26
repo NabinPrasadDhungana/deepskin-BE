@@ -40,7 +40,7 @@ class MessageSerializer(serializers.ModelSerializer):
 class PatientCaseListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Case
-        fields = ['id', 'status', 'patient_note', 'created_at', 'reviewed_at']
+        fields = ['id', 'status', 'ai_status', 'patient_note', 'created_at', 'reviewed_at']
         read_only_fields = fields
 
 
@@ -53,7 +53,7 @@ class PatientCaseDetailSerializer(serializers.ModelSerializer):
         model = Case
         fields = [
             'id', 'status', 'patient_note', 'images',
-            'assigned_doctor', 'verdict', 'created_at', 'reviewed_at',
+            'assigned_doctor', 'ai_status', 'verdict', 'created_at', 'reviewed_at',
         ]
         read_only_fields = fields
 
