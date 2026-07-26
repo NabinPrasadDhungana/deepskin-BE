@@ -12,6 +12,6 @@ drf-spectacular==0.28.0
 # ML inference deps -- installed separately, NOT required to run the
 # API/workflow itself (mlservice.pipeline lazy-imports these so the
 # rest of the backend works and tests pass without a GPU/TF install).
-# tensorflow==2.20.0   # see model dev notes for exact required version
-# opencv-python        # only needed once real DullRazor + attention-map
+tensorflow==2.20.0   # see model dev notes for exact required version
+opencv-python        # only needed once real DullRazor + attention-map
 #                      # generation is wired into mlservice/pipeline.py
