@@ -6,8 +6,11 @@ from .views import (
     DeactivateDoctorView,
     DeepSkinTokenObtainPairView,
     DoctorListView,
+    DoctorSelfRegisterView,
     MeView,
+    PendingDoctorApplicationsView,
     RegisterPatientView,
+    ReviewDoctorApplicationView,
 )
 
 urlpatterns = [
@@ -20,4 +23,7 @@ urlpatterns = [
     path('doctors/', DoctorListView.as_view(), name='doctor-list'),
     path('doctors/create/', CreateDoctorView.as_view(), name='doctor-create'),
     path('doctors/<int:pk>/deactivate/', DeactivateDoctorView.as_view(), name='doctor-deactivate'),
+    path('doctors/register/', DoctorSelfRegisterView.as_view(), name='doctor-self-register'),
+    path('doctors/pending/', PendingDoctorApplicationsView.as_view(), name='doctor-pending-list'),
+    path('doctors/<int:pk>/review/', ReviewDoctorApplicationView.as_view(), name='doctor-review'),
 ]
