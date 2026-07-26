@@ -209,3 +209,14 @@ DEEPSKIN_CLASSIFICATION_THRESHOLD = float(
 # Priority bucket boundaries shown in the doctor queue (coarse, not exact %)
 DEEPSKIN_PRIORITY_HIGH_CUTOFF = 0.60
 DEEPSKIN_PRIORITY_MEDIUM_CUTOFF = 0.30
+
+# ── Celery ──
+CELERY_BROKER_URL = os.environ.get('DEEPSKIN_REDIS_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.environ.get('DEEPSKIN_REDIS_URL', 'redis://localhost:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+
+# Runs tasks synchronously in-process when True -- keep True for tests
+# and any environment without Redis running (e.g. quick local checks).
+CELERY_TASK_ALWAYS_EAGER = os.environ.get('DEEPSKIN_CELERY_EAGER', 'False') == 'True'
