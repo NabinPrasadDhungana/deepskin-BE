@@ -11,22 +11,24 @@ def lesion_image_path(instance, filename):
 
 
 class Case(models.Model):
-    """
-    One Case == one lesion a patient is concerned about. A patient with
-    multiple separate moles creates multiple Cases (see system design doc,
-    section 7) -- this keeps one prediction/verdict cleanly tied to one
-    lesion rather than an ambiguous multi-lesion bundle.
-    """
-
     class Status(models.TextChoices):
-        PENDING = 'pending', 'Pending'          # uploaded, AI processed, awaiting doctor pickup
-        IN_REVIEW = 'in_review', 'In Review'    # a doctor has picked it up
-        REVIEWED = 'reviewed', 'Reviewed'       # verdict recorded, patient notified
+        PENDING = 'pending', 'Pending'
+        IN_REVIEW = 'in_review', 'In Review'
+        REVIEWED = 'reviewed', 'Reviewed'
 
     class Priority(models.TextChoices):
         HIGH = 'high', 'High'
         MEDIUM = 'medium', 'Medium'
         LOW = 'low', 'Low'
+
+    # NEW: tracks the async ML job itself, separate from clinical Status.
+    # A case can be Status.PENDING while ai_status is still PROCESSING --
+    # it shouldn't appear in the doctor queue until ai_status=DONE.
+    class AIStatus(models.TextChoices):
+        QUEUED = 'queued', 'Queued'
+        PROCESSING = 'processing', 'Processing'
+        DONE = 'done', 'Done'
+        FAILED = 'failed', 'Failed'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(
@@ -37,16 +39,15 @@ class Case(models.Model):
         null=True, blank=True, related_name='assigned_cases'
     )
 
-    patient_note = models.TextField(blank=True, help_text="e.g. 'itchy for 2 weeks'")
+    patient_note = models.TextField(blank=True)
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
+    ai_status = models.CharField(max_length=12, choices=AIStatus.choices, default=AIStatus.QUEUED)
 
-    # ── AI output (set once by the inference pipeline right after upload) ──
-    # Doctors see the full fields below; patients never do (enforced in
-    # serializers.py, not just the frontend -- see PatientCaseSerializer).
     ai_confidence = models.FloatField(null=True, blank=True)
     ai_priority = models.CharField(max_length=6, choices=Priority.choices, blank=True)
     attention_map_image = models.ImageField(upload_to='attention_maps/', null=True, blank=True)
     ai_processed_at = models.DateTimeField(null=True, blank=True)
+    ai_error_message = models.TextField(blank=True)  # populated only if ai_status=FAILED
 
     created_at = models.DateTimeField(auto_now_add=True)
     assigned_at = models.DateTimeField(null=True, blank=True)
@@ -58,6 +59,7 @@ class Case(models.Model):
             models.Index(fields=['status', 'ai_confidence']),
             models.Index(fields=['patient', 'status']),
             models.Index(fields=['assigned_doctor', 'status']),
+            models.Index(fields=['ai_status']),
         ]
 
     def __str__(self):
