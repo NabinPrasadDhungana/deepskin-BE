@@ -8,6 +8,7 @@ pillow==12.3.0
 PyJWT==2.13.0
 sqlparse==0.5.5
 drf-spectacular==0.28.0
+python-dotenv==1.2.2
 
 # ML inference deps -- installed separately, NOT required to run the
 # API/workflow itself (mlservice.pipeline lazy-imports these so the
