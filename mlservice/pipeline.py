@@ -183,13 +183,14 @@ def generate_attention_map_overlay(pil_image: Image.Image) -> bytes:
 
 def run_inference_on_case(case: Case) -> None:
     """
-    The single entry point cases/views.py calls after a patient uploads a
-    case. Populates ai_confidence, ai_priority, attention_map_image, and
-    ai_processed_at on the Case in place.
+    Called by mlservice.tasks.process_case_task. Populates ai_confidence,
+    ai_priority, and attention_map_image on the Case. Status transitions
+    (QUEUED -> PROCESSING -> DONE/FAILED) are owned by the calling task,
+    not this function -- keeps this function a pure "do the ML work" step.
     """
     primary_image = case.images.filter(is_primary=True).first() or case.images.first()
     if primary_image is None:
-        return
+        raise ValueError('Case has no images to process.')
 
     pil_image = Image.open(primary_image.image)
     confidence = predict(pil_image)
@@ -203,6 +204,4 @@ def run_inference_on_case(case: Case) -> None:
     )
 
     case.ai_processed_at = timezone.now()
-    case.save(update_fields=[
-        'ai_confidence', 'ai_priority', 'attention_map_image', 'ai_processed_at'
-    ])
+    case.save(update_fields=['ai_confidence', 'ai_priority', 'attention_map_image', 'ai_processed_at'])
