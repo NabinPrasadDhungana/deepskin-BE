@@ -15,6 +15,12 @@ class User(AbstractUser):
         PATIENT = 'patient', 'Patient'
         DOCTOR = 'doctor', 'Doctor'
         ADMIN = 'admin', 'Admin'
+        
+    class VerificationStatus(models.TextChoices):
+        NOT_APPLICABLE = 'n_a', 'Not applicable'   # patients/admins
+        PENDING = 'pending', 'Pending review'
+        APPROVED = 'approved', 'Approved'
+        REJECTED = 'rejected', 'Rejected'
 
     role = models.CharField(max_length=10, choices=Role.choices)
 
@@ -23,6 +29,20 @@ class User(AbstractUser):
     # to avoid over-engineering for this project's scope.
     specialty = models.CharField(max_length=100, blank=True)
     phone_number = models.CharField(max_length=20, blank=True)
+    
+    # ── Doctor verification (only meaningful when role == DOCTOR) ──
+    license_number = models.CharField(max_length=100, blank=True)
+    license_document = models.ImageField(upload_to='doctor_licenses/', null=True, blank=True)
+    verification_status = models.CharField(
+        max_length=10, choices=VerificationStatus.choices,
+        default=VerificationStatus.NOT_APPLICABLE,
+    )
+    verification_notes = models.TextField(blank=True)  # admin's reason on rejection
+    reviewed_by = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='doctor_reviews_done',
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
 
     def is_patient(self):
         return self.role == self.Role.PATIENT
@@ -33,6 +53,9 @@ class User(AbstractUser):
     def is_admin_role(self):
         # Named to avoid clashing with Django's built-in is_staff/is_superuser
         return self.role == self.Role.ADMIN
+    
+    def is_verified_doctor(self):
+        return self.is_doctor() and self.verification_status == self.VerificationStatus.APPROVED
 
     def __str__(self):
         return f'{self.username} ({self.role})'
