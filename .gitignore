@@ -125,3 +125,8 @@ venv.bak/
 *.njsproj
 *.sln
 *.swp
+
+
+# media file
+media/
+media
