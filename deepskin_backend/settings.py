@@ -25,107 +25,105 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 # In production this MUST come from an environment variable.
 SECRET_KEY = os.environ.get(
-    'DEEPSKIN_SECRET_KEY',
-    'django-insecure-wgss0%)6*wz^dsx_u**)5&htasewv^##_rk4-*fo1*0^2f$^r=',
+    "DEEPSKIN_SECRET_KEY",
+    "django-insecure-wgss0%)6*wz^dsx_u**)5&htasewv^##_rk4-*fo1*0^2f$^r=",
 )
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DEEPSKIN_DEBUG', 'True') == 'True'
+DEBUG = os.environ.get("DEEPSKIN_DEBUG", "True") == "True"
 
-ALLOWED_HOSTS = os.environ.get('DEEPSKIN_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = os.environ.get("DEEPSKIN_ALLOWED_HOSTS", "localhost,127.0.0.1").split(
+    ","
+)
 
 
 # Application definition
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
     # Third-party
-    'rest_framework',
-    'rest_framework_simplejwt',
-    'corsheaders',
-
+    "rest_framework",
+    "rest_framework_simplejwt",
+    "corsheaders",
     # DeepSkin apps
-    'accounts',
-    'cases',
-    'mlservice',
-    'drf_spectacular',
+    "accounts",
+    "cases",
+    "mlservice",
+    "drf_spectacular",
 ]
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
 # ── Custom user model (role-based: patient / doctor / admin) ──
-AUTH_USER_MODEL = 'accounts.User'
+AUTH_USER_MODEL = "accounts.User"
 
 # ── CORS (React frontend runs on a different origin during dev) ──
 CORS_ALLOWED_ORIGINS = os.environ.get(
-    'DEEPSKIN_CORS_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000'
-).split(',')
+    "DEEPSKIN_CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
+).split(",")
 
 # ── DRF ──
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
-    'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.IsAuthenticated',
-    ),
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 20,
-    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 20,
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'DeepSkin API',
-    'DESCRIPTION': 'Skin lesion triage & teledermatology platform',
-    'VERSION': '1.0.0',
-    'SERVE_INCLUDE_SCHEMA': False,
+    "TITLE": "DeepSkin API",
+    "DESCRIPTION": "Skin lesion triage & teledermatology platform",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
     # JWT auth for the Swagger UI "Authorize" button
-    'SWAGGER_UI_SETTINGS': {
-        'persistAuthorization': True,
+    "SWAGGER_UI_SETTINGS": {
+        "persistAuthorization": True,
     },
 }
 
 # ── JWT ──
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=8),   # a doctor's typical shift
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=8),  # a doctor's typical shift
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
 }
 
-ROOT_URLCONF = 'deepskin_backend.urls'
+ROOT_URLCONF = "deepskin_backend.urls"
 
 TEMPLATES = [
     {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
             ],
         },
     },
 ]
 
-WSGI_APPLICATION = 'deepskin_backend.wsgi.application'
+WSGI_APPLICATION = "deepskin_backend.wsgi.application"
 
 
 # Database
@@ -134,22 +132,22 @@ WSGI_APPLICATION = 'deepskin_backend.wsgi.application'
 # SQLite by default for local dev/demo. Proposal specifies PostgreSQL for
 # production — swap by setting DEEPSKIN_DB_ENGINE=postgres and the DB_*
 # env vars below.
-if os.environ.get('DEEPSKIN_DB_ENGINE') == 'postgres':
+if os.environ.get("DEEPSKIN_DB_ENGINE") == "postgres":
     DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.environ.get('DEEPSKIN_DB_NAME', 'deepskin'),
-            'USER': os.environ.get('DEEPSKIN_DB_USER', 'deepskin'),
-            'PASSWORD': os.environ.get('DEEPSKIN_DB_PASSWORD', ''),
-            'HOST': os.environ.get('DEEPSKIN_DB_HOST', 'localhost'),
-            'PORT': os.environ.get('DEEPSKIN_DB_PORT', '5432'),
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.environ.get("DEEPSKIN_DB_NAME", "deepskin"),
+            "USER": os.environ.get("DEEPSKIN_DB_USER", "deepskin"),
+            "PASSWORD": os.environ.get("DEEPSKIN_DB_PASSWORD", ""),
+            "HOST": os.environ.get("DEEPSKIN_DB_HOST", "localhost"),
+            "PORT": os.environ.get("DEEPSKIN_DB_PORT", "5432"),
         }
     }
 else:
     DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
         }
     }
 
@@ -159,16 +157,16 @@ else:
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
 
@@ -176,9 +174,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = "UTC"
 
 USE_I18N = True
 
@@ -188,35 +186,37 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = "static/"
 
 # ── Media (uploaded lesion images + generated attention-map overlays) ──
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
 
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ── DeepSkin ML settings ──
 # Path to the trained .keras model. Swap via env var without touching code.
 DEEPSKIN_MODEL_PATH = os.environ.get(
-    'DEEPSKIN_MODEL_PATH', str(BASE_DIR / 'mlservice' / 'model' / 'final_model_cbam.keras')
+    "DEEPSKIN_MODEL_PATH",
+    str(BASE_DIR / "mlservice" / "model" / "final_model_cbam.keras"),
 )
 # Classification threshold — tuned for high recall (see model dev notes).
 # 0.30 chosen over the default 0.50 to prioritize catching malignant cases.
 DEEPSKIN_CLASSIFICATION_THRESHOLD = float(
-    os.environ.get('DEEPSKIN_CLASSIFICATION_THRESHOLD', '0.30')
+    os.environ.get("DEEPSKIN_CLASSIFICATION_THRESHOLD", "0.30")
 )
 # Priority bucket boundaries shown in the doctor queue (coarse, not exact %)
 DEEPSKIN_PRIORITY_HIGH_CUTOFF = 0.60
 DEEPSKIN_PRIORITY_MEDIUM_CUTOFF = 0.30
 
 # ── Celery ──
-CELERY_BROKER_URL = os.environ.get('DEEPSKIN_REDIS_URL', 'redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = os.environ.get('DEEPSKIN_REDIS_URL', 'redis://localhost:6379/0')
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
+CELERY_BROKER_URL = os.environ.get("DEEPSKIN_REDIS_URL", "redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = os.environ.get("DEEPSKIN_REDIS_URL", "redis://localhost:6379/0")
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
 
 # Runs tasks synchronously in-process when True -- keep True for tests
 # and any environment without Redis running (e.g. quick local checks).
-CELERY_TASK_ALWAYS_EAGER = os.environ.get('DEEPSKIN_CELERY_EAGER', 'False') == 'True'
+CELERY_TASK_ALWAYS_EAGER = os.environ.get("DEEPSKIN_CELERY_EAGER", "False") == "True"
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
