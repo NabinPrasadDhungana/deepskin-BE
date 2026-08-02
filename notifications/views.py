@@ -48,16 +48,19 @@ class MarkAllNotificationsReadView(APIView):
         return Response(status=204)
 
 
-def _authenticate_via_query_token(request):
+def _authenticate_stream_request(request):
     """
-    EventSource cannot set an Authorization header, so the JWT travels in
-    the `token` query param instead (acceptable for dev/demo -- logged by
-    the server; production would move to a cookie or a short-lived stream
-    token). Returns the user or raises AuthenticationFailed.
+    Accept the JWT via the ``Authorization`` header (preferred) or the
+    ``token`` query param (legacy / fallback).  Returns the user or
+    raises AuthenticationFailed.
     """
-    raw = request.GET.get('token')
+    auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+    if auth_header.startswith('Bearer '):
+        raw = auth_header[7:]
+    else:
+        raw = request.GET.get('token')
     if not raw:
-        raise AuthenticationFailed('Missing token query parameter.')
+        raise AuthenticationFailed('Missing token.')
     try:
         payload = AccessToken(raw)
     except (TokenError, TypeError) as exc:
@@ -71,22 +74,21 @@ def _authenticate_via_query_token(request):
 
 class NotificationStreamView(View):
     """
-    GET /api/notifications/stream/?token=<jwt>
+    GET /api/notifications/stream/
 
     Server-Sent Events stream of live notifications for the authenticated
-    user. Subscribes to the Redis channel `notify:<user_id>` and yields one
-    `data:` line per notification, with a `: ping` heartbeat to keep the
-    connection and proxies alive. Each open connection holds one thread --
-    fine at this project's scale.
+    user. Subscribes to the Redis channel ``notify:<user_id>`` and yields
+    one ``data:`` line per notification, with a ``: ping`` heartbeat to
+    keep the connection and proxies alive.
 
-    This is a plain Django view rather than a DRF APIView so that DRF's
-    content negotiation (which has no renderer for `text/event-stream`)
-    never rejects the EventSource request with a 406.
+    Authentication: ``Authorization: Bearer <jwt>`` header (preferred) or
+    ``?token=<jwt>`` query param (fallback).  Using a header avoids
+    browser/privacy-extension blocking of long tokens in URLs.
     """
 
     def get(self, request):
         try:
-            user = _authenticate_via_query_token(request)
+            user = _authenticate_stream_request(request)
         except AuthenticationFailed:
             return StreamingHttpResponse(status=401)
 

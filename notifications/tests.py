@@ -10,7 +10,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from cases.models import Case
 from mlservice.tasks import process_case_task
 from notifications.models import Notification
-from notifications.views import NotificationStreamView, _authenticate_via_query_token
+from notifications.views import NotificationStreamView, _authenticate_stream_request
 
 User = get_user_model()
 
@@ -108,6 +108,38 @@ class NotificationTests(APITestCase):
             Notification.objects.filter(recipient=self.admin, type=Notification.Type.AI_FAILED).count(), 1
         )
 
+    def test_case_submitted_notifies_doctors_and_admins(self):
+        """Case submission (CASE_SUBMITTED) alerts every active doctor + admin."""
+        from io import BytesIO
+        from unittest.mock import patch
+
+        from PIL import Image
+
+        buf = BytesIO()
+        Image.new('RGB', (10, 10)).save(buf, format='JPEG')
+        buf.seek(0)
+        buf.name = 'lesion.jpg'
+
+        self.auth(self.patient)
+        with patch('mlservice.pipeline.run_inference_on_case', return_value=None):
+            resp = self.client.post(
+                reverse('case-list-create'),
+                {'patient_note': 'new lesion', 'images': [buf]},
+                format='multipart',
+            )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        case_id = resp.data['id']
+
+        doctor_case_submitted = Notification.objects.filter(
+            recipient=self.doctor, type='case_submitted', case_id=case_id
+        )
+        admin_case_submitted = Notification.objects.filter(
+            recipient=self.admin, type='case_submitted', case_id=case_id
+        )
+        self.assertTrue(doctor_case_submitted.exists())
+        self.assertTrue(admin_case_submitted.exists())
+        self.assertNotIn('confidence', doctor_case_submitted.first().body)
+
     def test_doctor_application_notifies_admins(self):
         from io import BytesIO
         from PIL import Image
@@ -135,16 +167,21 @@ class NotificationTests(APITestCase):
         token = str(RefreshToken.for_user(self.patient).access_token)
         factory = APIRequestFactory()
 
-        ok_request = Request(factory.get('/api/notifications/stream/', {'token': token}))
-        self.assertEqual(_authenticate_via_query_token(ok_request), self.patient)
+        # via Authorization header (preferred)
+        ok_request = Request(factory.get('/api/notifications/stream/', HTTP_AUTHORIZATION=f'Bearer {token}'))
+        self.assertEqual(_authenticate_stream_request(ok_request), self.patient)
+
+        # via query param (fallback)
+        ok_request_q = Request(factory.get('/api/notifications/stream/', {'token': token}))
+        self.assertEqual(_authenticate_stream_request(ok_request_q), self.patient)
 
         bad_request = Request(factory.get('/api/notifications/stream/', {'token': 'garbage'}))
         with self.assertRaises(AuthenticationFailed):
-            _authenticate_via_query_token(bad_request)
+            _authenticate_stream_request(bad_request)
 
         missing_request = Request(factory.get('/api/notifications/stream/'))
         with self.assertRaises(AuthenticationFailed):
-            _authenticate_via_query_token(missing_request)
+            _authenticate_stream_request(missing_request)
 
     def test_stream_response_headers(self):
         token = str(RefreshToken.for_user(self.patient).access_token)

@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 
 from accounts.permissions import IsDoctor, IsPatient
 from mlservice.tasks import process_case_task
-from notifications.emitter import emit_notification
+from notifications.emitter import emit_notification, emit_notification_to_admins, emit_notification_to_doctors
 from notifications.models import Notification
 from .models import Case, CaseImage, Message
 from .permissions import IsAssignedDoctorOrUnassigned, IsCaseOwnerPatient
@@ -64,6 +64,22 @@ class PatientCaseListCreateView(generics.ListCreateAPIView):
         # Schedule async -- returns immediately, doctor queue fills in
         # once the task finishes (ai_status: queued -> processing -> done).
         process_case_task.delay(str(case.id))
+
+        # Alert the queue live: notify every active doctor and admin that a
+        # new case has arrived (CASE_SUBMITTED). Doctors pick it up from the
+        # queue once AI processing finishes.
+        emit_notification_to_doctors(
+            type_=Notification.Type.CASE_SUBMITTED,
+            body='A new case has been submitted and is now in the queue.',
+            actor=request.user.username,
+            case=case,
+        )
+        emit_notification_to_admins(
+            type_=Notification.Type.CASE_SUBMITTED,
+            body='A new case has been submitted by a patient.',
+            actor=request.user.username,
+            case=case,
+        )
 
         return Response(
             PatientCaseDetailSerializer(case, context={'request': request}).data,

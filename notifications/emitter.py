@@ -11,6 +11,7 @@ import json
 
 import redis
 from django.conf import settings
+from django.core.serializers.json import DjangoJSONEncoder
 
 from .models import Notification
 from .serializers import NotificationSerializer
@@ -22,7 +23,9 @@ def _publish(recipient_id, payload):
     try:
         r = redis.Redis.from_url(settings.CELERY_BROKER_URL)
         try:
-            r.publish(f'notify:{recipient_id}', json.dumps(payload))
+            # NotificationSerializer.data keeps FK fields (e.g. `case` UUID)
+            # as native objects; DjangoJSONEncoder coerces UUID/datetime/Decimal.
+            r.publish(f'notify:{recipient_id}', json.dumps(payload, cls=DjangoJSONEncoder))
         finally:
             r.close()
     except Exception:
@@ -45,3 +48,12 @@ def emit_notification_to_admins(*, type_, body, actor='', case=None):
     User = get_user_model()
     for admin in User.objects.filter(role=User.Role.ADMIN, is_active=True):
         emit_notification(recipient=admin, type_=type_, body=body, actor=actor, case=case)
+
+
+def emit_notification_to_doctors(*, type_, body, actor='', case=None):
+    """Deliver to every active doctor. Used to alert the queue of a new case."""
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    for doctor in User.objects.filter(role=User.Role.DOCTOR, is_active=True):
+        emit_notification(recipient=doctor, type_=type_, body=body, actor=actor, case=case)
