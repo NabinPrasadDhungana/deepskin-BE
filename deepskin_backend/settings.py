@@ -36,6 +36,13 @@ ALLOWED_HOSTS = os.environ.get("DEEPSKIN_ALLOWED_HOSTS", "localhost,127.0.0.1").
     ","
 )
 
+# When running behind an HTTPS-terminating reverse proxy (e.g. the Vite dev
+# proxy in the hosted preview), the proxy injects X-Forwarded-Proto so DRF's
+# build_absolute_uri() returns https URLs -- otherwise browsers block the
+# media as mixed content. Only enabled explicitly; safe for local dev.
+if os.environ.get("DEEPSKIN_TRUST_PROXY_SSL") == "True":
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 
 # Application definition
 
@@ -54,6 +61,7 @@ INSTALLED_APPS = [
     "accounts",
     "cases",
     "mlservice",
+    "notifications",
     "drf_spectacular",
 ]
 

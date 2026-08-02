@@ -38,9 +38,14 @@ class MessageSerializer(serializers.ModelSerializer):
 # ─────────────────────────────────────────────────────────────────────────
 
 class PatientCaseListSerializer(serializers.ModelSerializer):
+    assigned_doctor = UserSerializer(read_only=True)
+
     class Meta:
         model = Case
-        fields = ['id', 'status', 'ai_status', 'patient_note', 'created_at', 'reviewed_at']
+        fields = [
+            'id', 'status', 'ai_status', 'patient_note',
+            'assigned_doctor', 'created_at', 'reviewed_at',
+        ]
         read_only_fields = fields
 
 

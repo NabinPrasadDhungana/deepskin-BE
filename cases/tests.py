@@ -28,7 +28,10 @@ def fake_image_file():
 
 def fake_inference(case):
     """Stands in for mlservice.pipeline.run_inference_on_case -- see
-    mlservice/tests.py for why we don't hit the real model here."""
+    mlservice/tests.py for why we don't hit the real model here. Runs
+    synchronously because the suite sets DEEPSKIN_CELERY_EAGER=True (see
+    settings.py) -- process_case_task then executes in-process and calls
+    this instead of the real pipeline."""
     case.ai_confidence = 0.82
     case.ai_priority = Case.Priority.HIGH
     case.save(update_fields=['ai_confidence', 'ai_priority'])
@@ -46,7 +49,7 @@ class DeepSkinWorkflowTests(APITestCase):
     def auth(self, user):
         self.client.force_authenticate(user=user)
 
-    @patch('cases.views.run_inference_on_case', side_effect=fake_inference)
+    @patch('mlservice.pipeline.run_inference_on_case', side_effect=fake_inference)
     def test_full_workflow_and_patient_never_sees_ai_fields(self, mock_infer):
         # 1. Patient uploads a case
         self.auth(self.patient)
@@ -106,7 +109,7 @@ class DeepSkinWorkflowTests(APITestCase):
         for forbidden_field in ('ai_confidence', 'ai_priority', 'attention_map_image'):
             self.assertNotIn(forbidden_field, final_detail.data)
 
-    @patch('cases.views.run_inference_on_case', side_effect=fake_inference)
+    @patch('mlservice.pipeline.run_inference_on_case', side_effect=fake_inference)
     def test_messaging_between_patient_and_assigned_doctor(self, mock_infer):
         self.auth(self.patient)
         resp = self.client.post(
