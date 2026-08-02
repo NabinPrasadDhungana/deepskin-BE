@@ -8,6 +8,8 @@ from rest_framework.views import APIView
 
 from accounts.permissions import IsDoctor, IsPatient
 from mlservice.tasks import process_case_task
+from notifications.emitter import emit_notification
+from notifications.models import Notification
 from .models import Case, CaseImage, Message
 from .permissions import IsAssignedDoctorOrUnassigned, IsCaseOwnerPatient
 from .serializers import (
@@ -127,6 +129,14 @@ class PickUpCaseView(APIView):
         case.status = Case.Status.IN_REVIEW
         case.assigned_at = timezone.now()
         case.save(update_fields=['assigned_doctor', 'status', 'assigned_at'])
+
+        emit_notification(
+            recipient=case.patient,
+            type_=Notification.Type.PICKUP,
+            body=f'Dr. {request.user.username} is now reviewing your case.',
+            actor=request.user.username,
+            case=case,
+        )
         return Response(DoctorCaseDetailSerializer(case, context={'request': request}).data)
 
 
@@ -154,6 +164,13 @@ class RecordVerdictView(generics.CreateAPIView):
         case.reviewed_at = timezone.now()
         case.save(update_fields=['status', 'reviewed_at'])
 
+        emit_notification(
+            recipient=case.patient,
+            type_=Notification.Type.VERDICT,
+            body='Your doctor has submitted a verdict for your case. Review it in your case history.',
+            actor=request.user.username,
+            case=case,
+        )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -212,6 +229,20 @@ class CaseMessageListCreateView(generics.ListCreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save(case=case, sender=request.user)
+
+        # Notify the OTHER party on the thread so a reply is never missed.
+        sender = request.user
+        recipient = case.assigned_doctor if sender.is_patient() else case.patient
+        if recipient is not None:
+            snippet = serializer.validated_data.get('body', '')
+            preview = snippet[:80] + ('…' if len(snippet) > 80 else '')
+            emit_notification(
+                recipient=recipient,
+                type_=Notification.Type.MESSAGE,
+                body=f'New message from {sender.username}: {preview}',
+                actor=sender.username,
+                case=case,
+            )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 

@@ -17,6 +17,8 @@ from .serializers import (
     ReviewDoctorApplicationSerializer,
     UserSerializer,
 )
+from notifications.emitter import emit_notification, emit_notification_to_admins
+from notifications.models import Notification
 
 
 class RegisterPatientView(generics.CreateAPIView):
@@ -87,6 +89,14 @@ class DoctorSelfRegisterView(generics.CreateAPIView):
     permission_classes = [permissions.AllowAny]
     parser_classes = [MultiPartParser, FormParser]
 
+    def perform_create(self, serializer):
+        user = serializer.save()
+        emit_notification_to_admins(
+            type_=Notification.Type.APPLICATION,
+            body=f'A new doctor application was submitted by {user.username}.',
+            actor=user.username,
+        )
+
 
 class PendingDoctorApplicationsView(generics.ListAPIView):
     """GET /api/auth/doctors/pending/ -- Admin only."""
@@ -144,5 +154,17 @@ class ReviewDoctorApplicationView(APIView):
                 "reviewed_by",
                 "reviewed_at",
             ]
+        )
+
+        if decision == "approve":
+            body = "Congratulations, your doctor application was approved. You can now log in."
+        else:
+            reason = serializer.validated_data.get("notes", "") or "not specified"
+            body = f"Your doctor application was not approved. Reason: {reason}."
+        emit_notification(
+            recipient=doctor,
+            type_=Notification.Type.APPLICATION,
+            body=body,
+            actor=request.user.username,
         )
         return Response(DoctorApplicationSerializer(doctor).data)
