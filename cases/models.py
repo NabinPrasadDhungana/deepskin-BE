@@ -21,14 +21,21 @@ class Case(models.Model):
         MEDIUM = 'medium', 'Medium'
         LOW = 'low', 'Low'
 
-    # NEW: tracks the async ML job itself, separate from clinical Status.
-    # A case can be Status.PENDING while ai_status is still PROCESSING --
-    # it shouldn't appear in the doctor queue until ai_status=DONE.
+    
+    
+    
     class AIStatus(models.TextChoices):
         QUEUED = 'queued', 'Queued'
         PROCESSING = 'processing', 'Processing'
         DONE = 'done', 'Done'
         FAILED = 'failed', 'Failed'
+
+    
+    
+    
+    class AIPrediction(models.TextChoices):
+        BENIGN = 'benign', 'Benign'
+        MALIGNANT = 'malignant', 'Malignant'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(
@@ -44,10 +51,16 @@ class Case(models.Model):
     ai_status = models.CharField(max_length=12, choices=AIStatus.choices, default=AIStatus.QUEUED)
 
     ai_confidence = models.FloatField(null=True, blank=True)
+    ai_prediction = models.CharField(
+        max_length=9, choices=AIPrediction.choices, blank=True
+    )
+    
+    
+    
     ai_priority = models.CharField(max_length=6, choices=Priority.choices, blank=True)
     attention_map_image = models.ImageField(upload_to='attention_maps/', null=True, blank=True)
     ai_processed_at = models.DateTimeField(null=True, blank=True)
-    ai_error_message = models.TextField(blank=True)  # populated only if ai_status=FAILED
+    ai_error_message = models.TextField(blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     assigned_at = models.DateTimeField(null=True, blank=True)
@@ -77,6 +90,16 @@ class CaseImage(models.Model):
     image = models.ImageField(upload_to=lesion_image_path)
     is_primary = models.BooleanField(default=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    
+    
+    
+    ai_confidence = models.FloatField(null=True, blank=True)
+    ai_prediction = models.CharField(
+        max_length=9, choices=Case.AIPrediction.choices, blank=True
+    )
+    ai_attention_map = models.ImageField(upload_to='attention_maps/', null=True, blank=True)
+    ai_processed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-is_primary', 'uploaded_at']

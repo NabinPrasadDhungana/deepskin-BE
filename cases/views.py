@@ -25,9 +25,9 @@ from .serializers import (
 User = get_user_model()
 
 
-# ─────────────────────────────────────────────────────────────────────────
-# Patient endpoints
-# ─────────────────────────────────────────────────────────────────────────
+
+
+
 
 class PatientCaseListCreateView(generics.ListCreateAPIView):
     """
@@ -61,13 +61,13 @@ class PatientCaseListCreateView(generics.ListCreateAPIView):
         for i, img in enumerate(images):
             CaseImage.objects.create(case=case, image=img, is_primary=(i == 0))
 
-        # Schedule async -- returns immediately, doctor queue fills in
-        # once the task finishes (ai_status: queued -> processing -> done).
+        
+        
         process_case_task.delay(str(case.id))
 
-        # Alert the queue live: notify every active doctor and admin that a
-        # new case has arrived (CASE_SUBMITTED). Doctors pick it up from the
-        # queue once AI processing finishes.
+        
+        
+        
         emit_notification_to_doctors(
             type_=Notification.Type.CASE_SUBMITTED,
             body='A new case has been submitted and is now in the queue.',
@@ -94,9 +94,9 @@ class PatientCaseDetailView(generics.RetrieveAPIView):
     queryset = Case.objects.all()
 
 
-# ─────────────────────────────────────────────────────────────────────────
-# Doctor endpoints
-# ─────────────────────────────────────────────────────────────────────────
+
+
+
 
 class DoctorQueueView(generics.ListAPIView):
     """
@@ -207,9 +207,9 @@ class PatientHistoryForDoctorView(generics.ListAPIView):
         ).order_by('-reviewed_at')
 
 
-# ─────────────────────────────────────────────────────────────────────────
-# Messaging (shared between patient and assigned doctor on a case)
-# ─────────────────────────────────────────────────────────────────────────
+
+
+
 
 class CaseMessageListCreateView(generics.ListCreateAPIView):
     """
@@ -246,7 +246,7 @@ class CaseMessageListCreateView(generics.ListCreateAPIView):
         serializer.is_valid(raise_exception=True)
         serializer.save(case=case, sender=request.user)
 
-        # Notify the OTHER party on the thread so a reply is never missed.
+        
         sender = request.user
         recipient = case.assigned_doctor if sender.is_patient() else case.patient
         if recipient is not None:
@@ -262,9 +262,9 @@ class CaseMessageListCreateView(generics.ListCreateAPIView):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
-# ─────────────────────────────────────────────────────────────────────────
-# Admin endpoints (system design doc section 2.3 / screen 11-13)
-# ─────────────────────────────────────────────────────────────────────────
+
+
+
 
 class AdminCaseAuditListView(generics.ListAPIView):
     """

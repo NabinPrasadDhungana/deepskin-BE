@@ -54,7 +54,7 @@ class DoctorSelfRegisterSerializer(serializers.ModelSerializer):
             license_document=validated_data['license_document'],
             role=User.Role.DOCTOR,
             verification_status=User.VerificationStatus.PENDING,
-            is_active=False,  # blocks login until an Admin approves
+            is_active=False,
         )
 
 
@@ -114,8 +114,8 @@ class DeepSkinTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
     def validate(self, attrs):
-        # Give a clear reason before Django's authenticate() silently
-        # rejects an inactive (pending/rejected) doctor as "wrong credentials".
+        
+        
         User_ = get_user_model()
         candidate = User_.objects.filter(username=attrs.get('username')).first()
         if candidate and candidate.is_doctor() and not candidate.is_active:

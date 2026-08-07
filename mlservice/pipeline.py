@@ -25,8 +25,8 @@ from PIL import Image
 
 from cases.models import Case
 
-_model = None          # lazy-loaded singleton, see get_model()
-_attention_model = None  # lazy-built singleton, see get_attention_model()
+_model = None
+_attention_model = None
 
 
 def get_model():
@@ -98,7 +98,7 @@ def dull_razor(image: np.ndarray) -> np.ndarray:
 
     h, w = image.shape[:2]
     k = max(9, int(min(h, w) * 0.035))
-    k = k if k % 2 == 1 else k + 1  # ensure odd
+    k = k if k % 2 == 1 else k + 1
 
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (k, k))
     blackhat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, kernel)
@@ -122,20 +122,20 @@ def preprocess_image(pil_image: Image.Image) -> np.ndarray:
     """
     import cv2
 
-    img = np.asarray(pil_image.convert('RGB'))  # uint8, original resolution
+    img = np.asarray(pil_image.convert('RGB'))
 
     img = dull_razor(img)
     img = cv2.GaussianBlur(img, (3, 3), 0)
     img = cv2.resize(img, (260, 260), interpolation=cv2.INTER_AREA)
 
-    return img.astype(np.float32)  # [0, 255], matches training
+    return img.astype(np.float32)
 
 
 def predict(pil_image: Image.Image) -> float:
     """Returns the raw malignant-class probability (0.0-1.0)."""
     model = get_model()
     x = preprocess_image(pil_image)
-    x = np.expand_dims(x, axis=0)  # add batch dimension
+    x = np.expand_dims(x, axis=0)
     prob = float(model.predict(x, verbose=0)[0][0])
     return prob
 
@@ -157,16 +157,16 @@ def generate_attention_map_overlay(pil_image: Image.Image) -> bytes:
     x = preprocess_image(pil_image)
     x_batched = np.expand_dims(x, axis=0)
 
-    mask = att_model.predict(x_batched, verbose=0)[0, :, :, 0]  # tiny grid, e.g. ~9x9
+    mask = att_model.predict(x_batched, verbose=0)[0, :, :, 0]
 
-    # FIX: INTER_CUBIC instead of default INTER_LINEAR, plus a Gaussian
-    # blur pass -- upsampling a ~9x9 attention grid to 260x260 with plain
-    # bilinear interpolation produces visible polygonal facets between
-    # grid cells. Cubic interpolation + blur gives a natural-looking
-    # heatmap gradient instead, which is what's actually useful to a doctor.
+    
+    
+    
+    
+    
     mask = cv2.resize(mask, (260, 260), interpolation=cv2.INTER_CUBIC)
     mask = cv2.GaussianBlur(mask, (15, 15), 0)
-    mask = np.clip(mask, 0, None)  # cubic interpolation can dip slightly negative
+    mask = np.clip(mask, 0, None)
     mask = (mask - mask.min()) / (mask.max() - mask.min() + 1e-8)
 
     heatmap = cv2.applyColorMap((mask * 255).astype(np.uint8), cv2.COLORMAP_JET)
@@ -183,25 +183,53 @@ def generate_attention_map_overlay(pil_image: Image.Image) -> bytes:
 
 def run_inference_on_case(case: Case) -> None:
     """
-    Called by mlservice.tasks.process_case_task. Populates ai_confidence,
-    ai_priority, and attention_map_image on the Case. Status transitions
-    (QUEUED -> PROCESSING -> DONE/FAILED) are owned by the calling task,
-    not this function -- keeps this function a pure "do the ML work" step.
+    Called by mlservice.tasks.process_case_task. Runs inference on EVERY
+    image of the case, storing per-image confidence / prediction / attention
+    map on each CaseImage, then rolls the WORST (highest malignant score)
+    image up onto the Case for the doctor queue / priority bucketing.
+    Status transitions (QUEUED -> PROCESSING -> DONE/FAILED) are owned by
+    the calling task, not this function.
     """
-    primary_image = case.images.filter(is_primary=True).first() or case.images.first()
-    if primary_image is None:
+    case_images = list(case.images.all())
+    if not case_images:
         raise ValueError('Case has no images to process.')
 
-    pil_image = Image.open(primary_image.image)
-    confidence = predict(pil_image)
+    now = timezone.now()
+    worst_conf = -1.0
+    worst_overlay_bytes = None
 
-    case.ai_confidence = confidence
-    case.ai_priority = confidence_to_priority(confidence)
+    for case_image in case_images:
+        pil_image = Image.open(case_image.image)
+        confidence = predict(pil_image)
 
-    overlay_bytes = generate_attention_map_overlay(pil_image)
-    case.attention_map_image.save(
-        f'{case.id}_attention.png', ContentFile(overlay_bytes), save=False
+        case_image.ai_confidence = confidence
+        case_image.ai_prediction = (
+            Case.AIPrediction.MALIGNANT
+            if confidence >= settings.DEEPSKIN_CLASSIFICATION_THRESHOLD
+            else Case.AIPrediction.BENIGN
+        )
+        case_image.ai_processed_at = now
+        overlay_bytes = generate_attention_map_overlay(pil_image)
+        case_image.ai_attention_map.save(
+            f'{case.id}_{case_image.pk}_attention.png',
+            ContentFile(overlay_bytes), save=False,
+        )
+        case_image.save()
+
+        if confidence > worst_conf:
+            worst_conf = confidence
+            worst_overlay_bytes = overlay_bytes
+
+    
+    case.ai_confidence = worst_conf
+    case.ai_prediction = (
+        Case.AIPrediction.MALIGNANT
+        if worst_conf >= settings.DEEPSKIN_CLASSIFICATION_THRESHOLD
+        else Case.AIPrediction.BENIGN
     )
-
-    case.ai_processed_at = timezone.now()
-    case.save(update_fields=['ai_confidence', 'ai_priority', 'attention_map_image', 'ai_processed_at'])
+    case.ai_priority = confidence_to_priority(worst_conf)
+    case.attention_map_image.save(
+        f'{case.id}_attention.png', ContentFile(worst_overlay_bytes), save=False
+    )
+    case.ai_processed_at = now
+    case.save(update_fields=['ai_confidence', 'ai_prediction', 'ai_priority', 'attention_map_image', 'ai_processed_at'])

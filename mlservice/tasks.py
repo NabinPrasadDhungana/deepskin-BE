@@ -20,7 +20,7 @@ def process_case_task(self, case_id):
     try:
         case = Case.objects.get(pk=case_id)
     except Case.DoesNotExist:
-        return  # case was deleted before the task ran -- nothing to do
+        return
 
     case.ai_status = Case.AIStatus.PROCESSING
     case.save(update_fields=['ai_status'])
@@ -48,6 +48,6 @@ def process_case_task(self, case_id):
             actor='System',
             case=case,
         )
-        # Retry once or twice (transient GPU/model load issues), then give
-        # up and leave it FAILED for an admin to notice via admin/stats.
+        
+        
         raise self.retry(exc=exc, countdown=30)

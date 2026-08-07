@@ -36,7 +36,7 @@ class NotificationTests(APITestCase):
         self.client.force_authenticate(user=user)
 
     def test_notifications_created_at_transitions(self):
-        # Doctor picks up, messages the patient, then submits a verdict.
+        
         self.auth(self.doctor)
         self.assertEqual(self.client.post(reverse('case-pickup', args=[self.case.pk])).status_code, 200)
         self.assertEqual(
@@ -54,7 +54,7 @@ class NotificationTests(APITestCase):
         self.assertIn('pickup', types)
         self.assertIn('message', types)
         self.assertIn('verdict', types)
-        # Patient notification bodies must never leak AI output.
+        
         for n in resp.data:
             self.assertNotIn('confidence', n['body'])
             self.assertNotIn('prediction', n['body'])
@@ -103,7 +103,7 @@ class NotificationTests(APITestCase):
     def test_ai_failed_notifies_admins(self, infer):
         with self.assertRaises(Exception):
             process_case_task.apply(args=[str(self.case.pk)]).get()
-        # Each retry re-emits, so assert at least one admin alert was created.
+        
         self.assertGreaterEqual(
             Notification.objects.filter(recipient=self.admin, type=Notification.Type.AI_FAILED).count(), 1
         )
@@ -167,11 +167,11 @@ class NotificationTests(APITestCase):
         token = str(RefreshToken.for_user(self.patient).access_token)
         factory = APIRequestFactory()
 
-        # via Authorization header (preferred)
+        
         ok_request = Request(factory.get('/api/notifications/stream/', HTTP_AUTHORIZATION=f'Bearer {token}'))
         self.assertEqual(_authenticate_stream_request(ok_request), self.patient)
 
-        # via query param (fallback)
+        
         ok_request_q = Request(factory.get('/api/notifications/stream/', {'token': token}))
         self.assertEqual(_authenticate_stream_request(ok_request_q), self.patient)
 

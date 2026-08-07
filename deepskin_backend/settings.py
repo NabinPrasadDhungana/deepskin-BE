@@ -18,33 +18,33 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-# SECURITY WARNING: keep the secret key used in production secret!
-# In production this MUST come from an environment variable.
+
+
 SECRET_KEY = os.environ.get(
     "DEEPSKIN_SECRET_KEY",
     "django-insecure-wgss0%)6*wz^dsx_u**)5&htasewv^##_rk4-*fo1*0^2f$^r=",
 )
 
-# SECURITY WARNING: don't run with debug turned on in production!
+
 DEBUG = os.environ.get("DEEPSKIN_DEBUG", "True") == "True"
 
 ALLOWED_HOSTS = os.environ.get("DEEPSKIN_ALLOWED_HOSTS", "localhost,127.0.0.1").split(
     ","
 )
 
-# When running behind an HTTPS-terminating reverse proxy (e.g. the Vite dev
-# proxy in the hosted preview), the proxy injects X-Forwarded-Proto so DRF's
-# build_absolute_uri() returns https URLs -- otherwise browsers block the
-# media as mixed content. Only enabled explicitly; safe for local dev.
+
+
+
+
 if os.environ.get("DEEPSKIN_TRUST_PROXY_SSL") == "True":
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 
-# Application definition
+
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -53,11 +53,11 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    # Third-party
+    
     "rest_framework",
     "rest_framework_simplejwt",
     "corsheaders",
-    # DeepSkin apps
+    
     "accounts",
     "cases",
     "mlservice",
@@ -76,15 +76,15 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-# ── Custom user model (role-based: patient / doctor / admin) ──
+
 AUTH_USER_MODEL = "accounts.User"
 
-# ── CORS (React frontend runs on a different origin during dev) ──
+
 CORS_ALLOWED_ORIGINS = os.environ.get(
     "DEEPSKIN_CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"
 ).split(",")
 
-# ── DRF ──
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
@@ -100,15 +100,15 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "Skin lesion triage & teledermatology platform",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
-    # JWT auth for the Swagger UI "Authorize" button
+    
     "SWAGGER_UI_SETTINGS": {
         "persistAuthorization": True,
     },
 }
 
-# ── JWT ──
+
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=8),  # a doctor's typical shift
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=8),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
@@ -134,12 +134,12 @@ TEMPLATES = [
 WSGI_APPLICATION = "deepskin_backend.wsgi.application"
 
 
-# Database
-# https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-# SQLite by default for local dev/demo. Proposal specifies PostgreSQL for
-# production — swap by setting DEEPSKIN_DB_ENGINE=postgres and the DB_*
-# env vars below.
+
+
+
+
+
 if os.environ.get("DEEPSKIN_DB_ENGINE") == "postgres":
     DATABASES = {
         "default": {
@@ -160,8 +160,8 @@ else:
     }
 
 
-# Password validation
-# https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
+
+
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -179,8 +179,8 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
-# Internationalization
-# https://docs.djangoproject.com/en/6.0/topics/i18n/
+
+
 
 LANGUAGE_CODE = "en-us"
 
@@ -191,40 +191,40 @@ USE_I18N = True
 USE_TZ = True
 
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/6.0/howto/static-files/
+
+
 
 STATIC_URL = "static/"
 
-# ── Media (uploaded lesion images + generated attention-map overlays) ──
+
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# ── DeepSkin ML settings ──
-# Path to the trained .keras model. Swap via env var without touching code.
+
+
 DEEPSKIN_MODEL_PATH = os.environ.get(
     "DEEPSKIN_MODEL_PATH",
     str(BASE_DIR / "mlservice" / "model" / "final_model_cbam.keras"),
 )
-# Classification threshold — tuned for high recall (see model dev notes).
-# 0.30 chosen over the default 0.50 to prioritize catching malignant cases.
+
+
 DEEPSKIN_CLASSIFICATION_THRESHOLD = float(
     os.environ.get("DEEPSKIN_CLASSIFICATION_THRESHOLD", "0.30")
 )
-# Priority bucket boundaries shown in the doctor queue (coarse, not exact %)
+
 DEEPSKIN_PRIORITY_HIGH_CUTOFF = 0.60
 DEEPSKIN_PRIORITY_MEDIUM_CUTOFF = 0.30
 
-# ── Celery ──
+
 CELERY_BROKER_URL = os.environ.get("DEEPSKIN_REDIS_URL", "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = os.environ.get("DEEPSKIN_REDIS_URL", "redis://localhost:6379/0")
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 
-# Runs tasks synchronously in-process when True -- keep True for tests
-# and any environment without Redis running (e.g. quick local checks).
+
+
 CELERY_TASK_ALWAYS_EAGER = os.environ.get("DEEPSKIN_CELERY_EAGER", "False") == "True"
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True

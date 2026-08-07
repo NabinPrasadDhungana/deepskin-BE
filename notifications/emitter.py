@@ -23,8 +23,8 @@ def _publish(recipient_id, payload):
     try:
         r = redis.Redis.from_url(settings.CELERY_BROKER_URL)
         try:
-            # NotificationSerializer.data keeps FK fields (e.g. `case` UUID)
-            # as native objects; DjangoJSONEncoder coerces UUID/datetime/Decimal.
+            
+            
             r.publish(f'notify:{recipient_id}', json.dumps(payload, cls=DjangoJSONEncoder))
         finally:
             r.close()

@@ -31,8 +31,8 @@ class Notification(models.Model):
     )
     type = models.CharField(max_length=20, choices=Type.choices)
     body = models.TextField()
-    # Denormalised sender name ("System", doctor username, etc.) so the
-    # dropdown doesn't need a join and system actors stay representable.
+    
+    
     actor = models.CharField(max_length=150, blank=True)
     case = models.ForeignKey(
         'cases.Case', on_delete=models.CASCADE, null=True, blank=True,
