@@ -30,6 +30,13 @@ class Case(models.Model):
         DONE = 'done', 'Done'
         FAILED = 'failed', 'Failed'
 
+    # NEW: the model's explicit benign/malignant label, computed from
+    # ai_confidence against DEEPSKIN_CLASSIFICATION_THRESHOLD. Stored rather
+    # than derived so the frontend never re-implements the threshold.
+    class AIPrediction(models.TextChoices):
+        BENIGN = 'benign', 'Benign'
+        MALIGNANT = 'malignant', 'Malignant'
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     patient = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='cases'
@@ -44,6 +51,12 @@ class Case(models.Model):
     ai_status = models.CharField(max_length=12, choices=AIStatus.choices, default=AIStatus.QUEUED)
 
     ai_confidence = models.FloatField(null=True, blank=True)
+    ai_prediction = models.CharField(
+        max_length=9, choices=AIPrediction.choices, blank=True
+    )
+    # NOTE: the four ai_* fields above are the worst-case roll-up across all
+    # the case's images (highest malignant score). Per-image results live on
+    # CaseImage.ai_confidence / ai_prediction / ai_attention_map.
     ai_priority = models.CharField(max_length=6, choices=Priority.choices, blank=True)
     attention_map_image = models.ImageField(upload_to='attention_maps/', null=True, blank=True)
     ai_processed_at = models.DateTimeField(null=True, blank=True)
@@ -77,6 +90,16 @@ class CaseImage(models.Model):
     image = models.ImageField(upload_to=lesion_image_path)
     is_primary = models.BooleanField(default=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    # Per-image AI result (unlike the case-level fields, which are a
+    # worst-case roll-up -- see run_inference_on_case). Patients never see
+    # these; they're exposed only via the doctor serializer.
+    ai_confidence = models.FloatField(null=True, blank=True)
+    ai_prediction = models.CharField(
+        max_length=9, choices=Case.AIPrediction.choices, blank=True
+    )
+    ai_attention_map = models.ImageField(upload_to='attention_maps/', null=True, blank=True)
+    ai_processed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-is_primary', 'uploaded_at']

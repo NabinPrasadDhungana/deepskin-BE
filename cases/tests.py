@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from django.utils import timezone
 from PIL import Image
 from rest_framework.test import APITestCase
 
@@ -31,10 +32,18 @@ def fake_inference(case):
     mlservice/tests.py for why we don't hit the real model here. Runs
     synchronously because the suite sets DEEPSKIN_CELERY_EAGER=True (see
     settings.py) -- process_case_task then executes in-process and calls
-    this instead of the real pipeline."""
+    this instead of the real pipeline. Mirrors the real per-image behaviour:
+    every CaseImage gets a score, and the Case carries the worst-case roll-up."""
+    for img in case.images.all():
+        img.ai_confidence = 0.82
+        img.ai_prediction = Case.AIPrediction.MALIGNANT
+        img.ai_processed_at = timezone.now()
+        img.save(update_fields=['ai_confidence', 'ai_prediction', 'ai_processed_at'])
+
     case.ai_confidence = 0.82
+    case.ai_prediction = Case.AIPrediction.MALIGNANT
     case.ai_priority = Case.Priority.HIGH
-    case.save(update_fields=['ai_confidence', 'ai_priority'])
+    case.save(update_fields=['ai_confidence', 'ai_prediction', 'ai_priority'])
 
 
 class DeepSkinWorkflowTests(APITestCase):
@@ -147,3 +156,44 @@ class DeepSkinWorkflowTests(APITestCase):
         self.auth(stranger)
         blocked = self.client.get(reverse('case-messages', args=[case_id]))
         self.assertEqual(len(blocked.data['results']), 0)
+
+    @patch('mlservice.pipeline.run_inference_on_case', side_effect=fake_inference)
+    def test_per_image_ai_fields_exposed_to_doctor_only(self, mock_infer):
+        """Upload two images; confirm both get per-image AI results, that a
+        doctor sees them on each image, and that a patient never does -- the
+        per-image safety boundary."""
+        self.auth(self.patient)
+        resp = self.client.post(
+            reverse('case-list-create'),
+            {'patient_note': 'two angles', 'images': [fake_image_file(), fake_image_file()]},
+            format='multipart',
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        case_id = resp.data['id']
+        case = Case.objects.get(pk=case_id)
+        self.assertEqual(case.images.count(), 2)
+
+        # Patient detail -- neither case-level nor per-image AI fields.
+        pdetail = self.client.get(reverse('case-detail-patient', args=[case_id]))
+        self.assertEqual(pdetail.status_code, 200)
+        for forbidden in ('ai_confidence', 'ai_priority', 'attention_map_image'):
+            self.assertNotIn(forbidden, pdetail.data)
+        self.assertEqual(len(pdetail.data['images']), 2)
+        for img in pdetail.data['images']:
+            for forbidden in ('ai_confidence', 'ai_prediction', 'ai_attention_map'):
+                self.assertNotIn(forbidden, img)
+
+        # Doctor: per-image AI fields present on every image.
+        self.auth(self.doctor)
+        self.client.post(reverse('case-pickup', args=[case_id]))
+        doctor_detail = self.client.get(reverse('case-detail-doctor', args=[case_id]))
+        self.assertEqual(doctor_detail.status_code, 200)
+        imgs = doctor_detail.data['images']
+        self.assertEqual(len(imgs), 2)
+        for img in imgs:
+            self.assertEqual(img['ai_prediction'], 'malignant')
+            self.assertEqual(img['ai_confidence'], 0.82)
+            self.assertIn('ai_attention_map', img)
+        # Case-level roll-up is still exposed to the doctor.
+        self.assertEqual(doctor_detail.data['ai_prediction'], 'malignant')
+        self.assertEqual(doctor_detail.data['ai_confidence'], 0.82)

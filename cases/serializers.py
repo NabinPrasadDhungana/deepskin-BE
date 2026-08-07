@@ -11,6 +11,19 @@ class CaseImageSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'uploaded_at']
 
 
+class DoctorCaseImageSerializer(serializers.ModelSerializer):
+    """Like CaseImageSerializer but with the per-image AI result attached.
+    Doctor-only -- the patient-facing CaseImageSerializer above deliberately
+    keeps every ai_* field off (patients never see model output)."""
+    class Meta:
+        model = CaseImage
+        fields = [
+            'id', 'image', 'is_primary', 'uploaded_at',
+            'ai_confidence', 'ai_prediction', 'ai_attention_map',
+        ]
+        read_only_fields = fields
+
+
 class VerdictSerializer(serializers.ModelSerializer):
     doctor = UserSerializer(read_only=True)
 
@@ -106,7 +119,7 @@ class DoctorCaseDetailSerializer(serializers.ModelSerializer):
     (enforced by IsAssignedDoctorOrUnassigned in the view). Includes the
     exact AI confidence and the attention-map overlay.
     """
-    images = CaseImageSerializer(many=True, read_only=True)
+    images = DoctorCaseImageSerializer(many=True, read_only=True)
     verdict = VerdictSerializer(read_only=True)
     patient = UserSerializer(read_only=True)
 
@@ -114,7 +127,8 @@ class DoctorCaseDetailSerializer(serializers.ModelSerializer):
         model = Case
         fields = [
             'id', 'patient', 'patient_note', 'status',
-            'images', 'ai_confidence', 'ai_priority', 'attention_map_image',
+            'images', 'ai_confidence', 'ai_prediction', 'ai_priority', 'ai_status',
+            'attention_map_image',
             'verdict', 'created_at', 'assigned_at', 'reviewed_at',
         ]
         read_only_fields = fields

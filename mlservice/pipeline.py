@@ -183,25 +183,53 @@ def generate_attention_map_overlay(pil_image: Image.Image) -> bytes:
 
 def run_inference_on_case(case: Case) -> None:
     """
-    Called by mlservice.tasks.process_case_task. Populates ai_confidence,
-    ai_priority, and attention_map_image on the Case. Status transitions
-    (QUEUED -> PROCESSING -> DONE/FAILED) are owned by the calling task,
-    not this function -- keeps this function a pure "do the ML work" step.
+    Called by mlservice.tasks.process_case_task. Runs inference on EVERY
+    image of the case, storing per-image confidence / prediction / attention
+    map on each CaseImage, then rolls the WORST (highest malignant score)
+    image up onto the Case for the doctor queue / priority bucketing.
+    Status transitions (QUEUED -> PROCESSING -> DONE/FAILED) are owned by
+    the calling task, not this function.
     """
-    primary_image = case.images.filter(is_primary=True).first() or case.images.first()
-    if primary_image is None:
+    case_images = list(case.images.all())
+    if not case_images:
         raise ValueError('Case has no images to process.')
 
-    pil_image = Image.open(primary_image.image)
-    confidence = predict(pil_image)
+    now = timezone.now()
+    worst_conf = -1.0
+    worst_overlay_bytes = None
 
-    case.ai_confidence = confidence
-    case.ai_priority = confidence_to_priority(confidence)
+    for case_image in case_images:
+        pil_image = Image.open(case_image.image)
+        confidence = predict(pil_image)
 
-    overlay_bytes = generate_attention_map_overlay(pil_image)
-    case.attention_map_image.save(
-        f'{case.id}_attention.png', ContentFile(overlay_bytes), save=False
+        case_image.ai_confidence = confidence
+        case_image.ai_prediction = (
+            Case.AIPrediction.MALIGNANT
+            if confidence >= settings.DEEPSKIN_CLASSIFICATION_THRESHOLD
+            else Case.AIPrediction.BENIGN
+        )
+        case_image.ai_processed_at = now
+        overlay_bytes = generate_attention_map_overlay(pil_image)
+        case_image.ai_attention_map.save(
+            f'{case.id}_{case_image.pk}_attention.png',
+            ContentFile(overlay_bytes), save=False,
+        )
+        case_image.save()
+
+        if confidence > worst_conf:
+            worst_conf = confidence
+            worst_overlay_bytes = overlay_bytes
+
+    # Case-level roll-up: the most concerning image wins.
+    case.ai_confidence = worst_conf
+    case.ai_prediction = (
+        Case.AIPrediction.MALIGNANT
+        if worst_conf >= settings.DEEPSKIN_CLASSIFICATION_THRESHOLD
+        else Case.AIPrediction.BENIGN
     )
-
-    case.ai_processed_at = timezone.now()
-    case.save(update_fields=['ai_confidence', 'ai_priority', 'attention_map_image', 'ai_processed_at'])
+    case.ai_priority = confidence_to_priority(worst_conf)
+    case.attention_map_image.save(
+        f'{case.id}_attention.png', ContentFile(worst_overlay_bytes), save=False
+    )
+    case.ai_processed_at = now
+    case.save(update_fields=['ai_confidence', 'ai_prediction', 'ai_priority', 'attention_map_image', 'ai_processed_at'])
