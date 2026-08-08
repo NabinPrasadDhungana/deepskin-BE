@@ -1,0 +1,8 @@
+# Render blueprint — Postgres database only.
+# The DeepSkin backend runs on ModelScope Studios; only PostgreSQL is hosted
+# on Render. Provision the DB by pointing Render at this file (or create it
+# manually in the dashboard) and inject its connection string via DATABASE_URL
+# into the ModelScope container env.
+databases:
+  - name: deepskin-postgres
+    plan: free

@@ -4,19 +4,27 @@ patient -> AI -> doctor queue -> pickup -> verdict -> patient view path,
 and specifically asserts the RBAC boundary that a patient's case detail
 response NEVER contains the AI confidence/priority/attention-map fields --
 this is the single most safety-critical behaviour in the whole system.
+
+The suite runs with DEEPSKIN_CELERY_EAGER=True, so uploads schedule
+process_case_task in-process. Since inference now runs on the HF Space
+(not locally), this test patches mlservice.tasks.submit_image (the HTTP
+handoff) and then drives the result webhook endpoint with fabricated
+results -- the exact path the real HF Space uses.
 """
 from io import BytesIO
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.test import override_settings
 from django.urls import reverse
-from django.utils import timezone
 from PIL import Image
 from rest_framework.test import APITestCase
 
 from .models import Case
 
 User = get_user_model()
+
+HF_TOKEN = 'test-hf-token'
 
 
 def fake_image_file():
@@ -27,25 +35,31 @@ def fake_image_file():
     return buf
 
 
-def fake_inference(case):
-    """Stands in for mlservice.pipeline.run_inference_on_case -- see
-    mlservice/tests.py for why we don't hit the real model here. Runs
-    synchronously because the suite sets DEEPSKIN_CELERY_EAGER=True (see
-    settings.py) -- process_case_task then executes in-process and calls
-    this instead of the real pipeline. Mirrors the real per-image behaviour:
-    every CaseImage gets a score, and the Case carries the worst-case roll-up."""
-    for img in case.images.all():
-        img.ai_confidence = 0.82
-        img.ai_prediction = Case.AIPrediction.MALIGNANT
-        img.ai_processed_at = timezone.now()
-        img.save(update_fields=['ai_confidence', 'ai_prediction', 'ai_processed_at'])
+def deliver_ai_result(client, case, confidences):
+    """Simulate HF callbacks: one POST to the result webhook per image."""
+    for img, conf in zip(case.images.all(), confidences):
+        resp = client.post(
+            reverse('ml-result-webhook'),
+            data={
+                'client_ref': 'test-ref',
+                'case_id': str(case.id),
+                'image_id': img.id,
+                'confidence': conf,
+                'prediction': (
+                    Case.AIPrediction.MALIGNANT if conf >= 0.30 else Case.AIPrediction.BENIGN
+                ),
+            },
+            format='json',
+            HTTP_X_HF_TOKEN=HF_TOKEN,
+        )
+        assert resp.status_code == 200, resp.content
 
-    case.ai_confidence = 0.82
-    case.ai_prediction = Case.AIPrediction.MALIGNANT
-    case.ai_priority = Case.Priority.HIGH
-    case.save(update_fields=['ai_confidence', 'ai_prediction', 'ai_priority'])
 
-
+@override_settings(
+    DEEPSKIN_HF_TOKEN=HF_TOKEN,
+    DEEPSKIN_HF_URL='http://testserver',
+    CELERY_TASK_ALWAYS_EAGER=True,
+)
 class DeepSkinWorkflowTests(APITestCase):
     def setUp(self):
         self.patient = User.objects.create_user(
@@ -58,9 +72,9 @@ class DeepSkinWorkflowTests(APITestCase):
     def auth(self, user):
         self.client.force_authenticate(user=user)
 
-    @patch('mlservice.pipeline.run_inference_on_case', side_effect=fake_inference)
-    def test_full_workflow_and_patient_never_sees_ai_fields(self, mock_infer):
-        # 1. Patient uploads a case
+    @patch('mlservice.tasks.submit_image', return_value={})
+    def test_full_workflow_and_patient_never_sees_ai_fields(self, mock_submit):
+        # 1. Patient uploads a case; async AI handoff is mocked
         self.auth(self.patient)
         resp = self.client.post(
             reverse('case-list-create'),
@@ -69,7 +83,11 @@ class DeepSkinWorkflowTests(APITestCase):
         )
         self.assertEqual(resp.status_code, 201, resp.content)
         case_id = resp.data['id']
-        mock_infer.assert_called_once()
+        mock_submit.assert_called_once()
+
+        # Deliver AI results through the webhook path (as HF would).
+        case = Case.objects.get(pk=case_id)
+        deliver_ai_result(self.client, case, [0.82])
 
         # Patient detail view must NOT contain any AI fields whatsoever
         detail = self.client.get(reverse('case-detail-patient', args=[case_id]))
@@ -118,8 +136,8 @@ class DeepSkinWorkflowTests(APITestCase):
         for forbidden_field in ('ai_confidence', 'ai_priority', 'attention_map_image'):
             self.assertNotIn(forbidden_field, final_detail.data)
 
-    @patch('mlservice.pipeline.run_inference_on_case', side_effect=fake_inference)
-    def test_messaging_between_patient_and_assigned_doctor(self, mock_infer):
+    @patch('mlservice.tasks.submit_image', return_value={})
+    def test_messaging_between_patient_and_assigned_doctor(self, mock_submit):
         self.auth(self.patient)
         resp = self.client.post(
             reverse('case-list-create'),
@@ -157,8 +175,8 @@ class DeepSkinWorkflowTests(APITestCase):
         blocked = self.client.get(reverse('case-messages', args=[case_id]))
         self.assertEqual(len(blocked.data['results']), 0)
 
-    @patch('mlservice.pipeline.run_inference_on_case', side_effect=fake_inference)
-    def test_per_image_ai_fields_exposed_to_doctor_only(self, mock_infer):
+    @patch('mlservice.tasks.submit_image', return_value={})
+    def test_per_image_ai_fields_exposed_to_doctor_only(self, mock_submit):
         """Upload two images; confirm both get per-image AI results, that a
         doctor sees them on each image, and that a patient never does -- the
         per-image safety boundary."""
@@ -172,6 +190,8 @@ class DeepSkinWorkflowTests(APITestCase):
         case_id = resp.data['id']
         case = Case.objects.get(pk=case_id)
         self.assertEqual(case.images.count(), 2)
+
+        deliver_ai_result(self.client, case, [0.82, 0.82])
 
         # Patient detail -- neither case-level nor per-image AI fields.
         pdetail = self.client.get(reverse('case-detail-patient', args=[case_id]))

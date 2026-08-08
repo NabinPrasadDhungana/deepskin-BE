@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.request import Request
@@ -15,6 +16,7 @@ from notifications.views import NotificationStreamView, _authenticate_stream_req
 User = get_user_model()
 
 
+@override_settings(DEEPSKIN_HF_TOKEN='test-hf-token', CELERY_TASK_ALWAYS_EAGER=True)
 class NotificationTests(APITestCase):
     def setUp(self):
         self.patient = User.objects.create_user(
@@ -34,6 +36,34 @@ class NotificationTests(APITestCase):
 
     def auth(self, user):
         self.client.force_authenticate(user=user)
+
+    def _png_file(self):
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+
+        buf = BytesIO()
+        Image.new('RGB', (10, 10), color='pink').save(buf, format='PNG')
+        return SimpleUploadedFile('lesion.png', buf.getvalue(), content_type='image/png')
+
+    def _deliver_result(self, confidence=0.82):
+        """POST a fake HF inference callback for the case's (single) image,
+        mirroring the production result webhook flow."""
+        img = self.case.images.first()
+        resp = self.client.post(
+            reverse('ml-result-webhook'),
+            data={
+                'client_ref': 'test-ref',
+                'case_id': str(self.case.pk),
+                'image_id': img.pk,
+                'confidence': confidence,
+                'prediction': 'malignant' if confidence >= 0.30 else 'benign',
+            },
+            format='json',
+            HTTP_X_HF_TOKEN='test-hf-token',
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
 
     def test_notifications_created_at_transitions(self):
         # Doctor picks up, messages the patient, then submits a verdict.
@@ -90,17 +120,24 @@ class NotificationTests(APITestCase):
         data = self.client.get(reverse('notification-list')).data
         self.assertTrue(all(n['read_at'] for n in data))
 
-    @patch('mlservice.pipeline.run_inference_on_case')
-    def test_ai_done_notifies_patient(self, infer):
+    @patch('mlservice.tasks.submit_image', return_value={})
+    def test_ai_done_notifies_patient(self, submit):
+        # Task hands the image to HF; the CASE_READY push is emitted by the
+        # result webhook once processing completes (mirrors production).
+        self.case.images.create(image=self._png_file(), is_primary=True)
         process_case_task.apply(args=[str(self.case.pk)])
-        infer.assert_called_once()
+        submit.assert_called_once()
+
+        # Simulate the HF callback that completes the case.
+        self._deliver_result(0.82)
         self.case.refresh_from_db()
         self.assertEqual(self.case.ai_status, Case.AIStatus.DONE)
         notif = Notification.objects.get(recipient=self.patient)
         self.assertEqual(notif.type, Notification.Type.CASE_READY)
 
-    @patch('mlservice.pipeline.run_inference_on_case', side_effect=RuntimeError('boom'))
-    def test_ai_failed_notifies_admins(self, infer):
+    @patch('mlservice.tasks.submit_image', side_effect=RuntimeError('boom'))
+    def test_ai_failed_notifies_admins(self, submit):
+        self.case.images.create(image=self._png_file(), is_primary=True)
         with self.assertRaises(Exception):
             process_case_task.apply(args=[str(self.case.pk)]).get()
         # Each retry re-emits, so assert at least one admin alert was created.

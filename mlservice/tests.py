@@ -8,10 +8,12 @@ roll the highest malignant score up to the Case), not the model itself.
 """
 from io import BytesIO
 from unittest.mock import patch
+import base64
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
+from django.urls import reverse
 from PIL import Image
 
 from cases.models import Case, CaseImage
@@ -85,3 +87,67 @@ class PipelineInferenceTestCase(TestCase):
         pipeline.run_inference_on_case(self.case)
         self.assertEqual(self.case.ai_prediction, Case.AIPrediction.BENIGN)
         self.assertEqual(self.case.ai_priority, Case.Priority.LOW)  # 0.29 < 0.30
+
+
+class ResultWebhookTestCase(TestCase):
+    """The HF Space callback path: token-gated, idempotent, and rolls the
+    worst image up to the Case once every image has been scored."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='webhook_patient', password='pw12345!',
+            role=User.Role.PATIENT,
+        )
+        self.case = Case.objects.create(patient=self.user, patient_note='x')
+        self.url = reverse('ml-result-webhook')
+        self.token = 'test-token'
+        self.img = add_image(self.case, is_primary=True)
+
+    def _post(self, confidence=0.9, expect_image_id=None, token=None):
+        return self.client.post(
+            self.url,
+            data={
+                'client_ref': 'ref-1',
+                'case_id': str(self.case.pk),
+                'image_id': expect_image_id or self.img.pk,
+                'confidence': confidence,
+                'prediction': 'malignant' if confidence >= 0.30 else 'benign',
+                'attention_png_base64': base64.b64encode(png_bytes()).decode(),
+            },
+            format='json',
+            HTTP_X_HF_TOKEN=token if token is not None else self.token,
+        )
+
+    @override_settings(DEEPSKIN_HF_TOKEN='test-token')
+    def test_rejects_missing_or_wrong_token(self):
+        self.assertEqual(self._post(token='').status_code, 403)
+        self.assertEqual(self._post(token='nope').status_code, 403)
+
+    @override_settings(DEEPSKIN_HF_TOKEN='test-token')
+    def test_result_writes_image_and_completes_case(self):
+        resp = self._post(confidence=0.9)
+        self.assertEqual(resp.status_code, 200)
+
+        self.img.refresh_from_db()
+        self.assertEqual(self.img.ai_confidence, 0.9)
+        self.assertEqual(self.img.ai_prediction, Case.AIPrediction.MALIGNANT)
+        self.assertIsNotNone(self.img.ai_attention_map)
+
+        self.case.refresh_from_db()
+        self.assertEqual(self.case.ai_status, Case.AIStatus.DONE)
+        self.assertEqual(self.case.ai_confidence, 0.9)
+
+    @override_settings(DEEPSKIN_HF_TOKEN='test-token')
+    def test_case_stays_processing_until_all_images_land(self):
+        second = add_image(self.case, is_primary=False)
+
+        self._post(confidence=0.9)  # only the first image scored
+        self.case.refresh_from_db()
+        self.assertEqual(self.case.ai_status, Case.AIStatus.QUEUED)  # still waiting
+        # (the task owns the PROCESSING transition; the webhook alone only
+        # completes the case once EVERY image has a result)
+
+        self._post(confidence=0.5, expect_image_id=second.pk)
+        self.case.refresh_from_db()
+        self.assertEqual(self.case.ai_status, Case.AIStatus.DONE)
+        self.assertEqual(self.case.ai_confidence, 0.9)  # worst image wins

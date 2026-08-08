@@ -67,6 +67,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -139,8 +140,13 @@ WSGI_APPLICATION = "deepskin_backend.wsgi.application"
 
 # SQLite by default for local dev/demo. Proposal specifies PostgreSQL for
 # production — swap by setting DEEPSKIN_DB_ENGINE=postgres and the DB_*
-# env vars below.
-if os.environ.get("DEEPSKIN_DB_ENGINE") == "postgres":
+# env vars below, or by exporting a DATABASE_URL connection string
+# (preferred — it carries host/port/user/password in one value).
+if os.environ.get("DATABASE_URL"):
+    import dj_database_url
+
+    DATABASES = {"default": dj_database_url.config(conn_max_age=600)}
+elif os.environ.get("DEEPSKIN_DB_ENGINE") == "postgres":
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
@@ -195,6 +201,39 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# ── Storage backends ──
+# static: WhiteNoise compresses + fingerprints local CSS/JS inside the
+# ModelScope container so the Django admin renders in production.
+# default (media): routes uploaded images & attention maps to Backblaze B2
+# (S3-compatible) because the container filesystem is ephemeral and is wiped
+# on every redeploy/restart. Only enabled when B2 creds are present, so local
+# dev and the test suite keep using the local disk with no keys/network.
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
+
+if os.environ.get("BACKBLAZE_KEY_ID"):
+    STORAGES["default"] = {"BACKEND": "storages.backends.s3boto3.S3Boto3Storage"}
+    AWS_ACCESS_KEY_ID = os.environ.get("BACKBLAZE_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = os.environ.get("BACKBLAZE_APPLICATION_KEY")
+    AWS_STORAGE_BUCKET_NAME = os.environ.get("BACKBLAZE_BUCKET_NAME")
+    AWS_S3_REGION_NAME = os.environ.get("BACKBLAZE_REGION")
+    AWS_S3_ENDPOINT_URL = f"https://s3.{AWS_S3_REGION_NAME}.backblazeb2.com"
+    # Backblaze B2 requires path-style URLs (bucket.s3.region.backblazeb2.com
+    # is NOT supported), unlike AWS proper.
+    AWS_S3_ADDRESSING_STYLE = "path"
+    AWS_S3_SIGNATURE_VERSION = "s3v4"
+    # Signed (query-string-authenticated) URLs keep lesion photos private:
+    # the bucket stays private and each media URL carries a short-lived
+    # signature. Set AWS_QUERYSTRING_AUTH=True below for public-bucket URLs.
+    AWS_QUERYSTRING_AUTH = True
 
 # ── Media (uploaded lesion images + generated attention-map overlays) ──
 MEDIA_URL = "/media/"
@@ -208,6 +247,21 @@ DEEPSKIN_MODEL_PATH = os.environ.get(
     "DEEPSKIN_MODEL_PATH",
     str(BASE_DIR / "mlservice" / "model" / "final_model_cbam.keras"),
 )
+
+# ── Hosted inference (Hugging Face Spaces) ──
+# In production the heavy TF model runs on HF, not in the Django container.
+# The Celery worker submits each case image to DEEPSKIN_HF_URL and HF POSTs
+# the result back to DEEPSKIN_HF_CALLBACK_URL (mlservice/views.py).
+DEEPSKIN_HF_URL = os.environ.get(
+    "DEEPSKIN_HF_URL", "http://localhost:7860"
+)
+DEEPSKIN_HF_TOKEN = os.environ.get("DEEPSKIN_HF_TOKEN", "")
+# Where HF should post results. Defaults to local Django for dev; set to the
+# deployed backend host in production (must be reachable from HF over the internet).
+DEEPSKIN_HF_CALLBACK_URL = os.environ.get(
+    "DEEPSKIN_HF_CALLBACK_URL",
+    "http://localhost:8000/api/ml/result/",
+)
 # Classification threshold — tuned for high recall (see model dev notes).
 # 0.30 chosen over the default 0.50 to prioritize catching malignant cases.
 DEEPSKIN_CLASSIFICATION_THRESHOLD = float(
@@ -218,8 +272,20 @@ DEEPSKIN_PRIORITY_HIGH_CUTOFF = 0.60
 DEEPSKIN_PRIORITY_MEDIUM_CUTOFF = 0.30
 
 # ── Celery ──
-CELERY_BROKER_URL = os.environ.get("DEEPSKIN_REDIS_URL", "redis://localhost:6379/0")
-CELERY_RESULT_BACKEND = os.environ.get("DEEPSKIN_REDIS_URL", "redis://localhost:6379/0")
+def _redis_url() -> str:
+    """Normalize DEEPSKIN_REDIS_URL for Celery. TLS endpoints (rediss://,
+    e.g. Upstash) require an explicit ssl_cert_reqs param or both the broker
+    and the redis result backend fail to start -- append it if missing, and
+    leave plain redis:// URLs untouched."""
+    url = os.environ.get("DEEPSKIN_REDIS_URL", "redis://localhost:6379/0")
+    if url.startswith("rediss://") and "ssl_cert_reqs=" not in url:
+        sep = "&" if "?" in url else "?"
+        url = f"{url}{sep}ssl_cert_reqs=required"
+    return url
+
+
+CELERY_BROKER_URL = _redis_url()
+CELERY_RESULT_BACKEND = _redis_url()
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
